@@ -174,9 +174,29 @@
         "name": "Camera {camera}"
       }
     },
+    "fan": {
+      "chamber_fan": {
+        "name": "Chamber fan",
+        "state_attributes": {
+          "preset_mode": {
+            "state": {
+              "auto": "Auto"
+            }
+          }
+        }
+      }
+    },
+    "light": {
+      "chamber_light": {
+        "name": "Chamber light"
+      }
+    },
     "number": {
       "bed_target_temperature": {
         "name": "Bed target temperature"
+      },
+      "chamber_target_temperature": {
+        "name": "Chamber target temperature"
       },
       "nozzle_target_temperature": {
         "name": "Tool {tool} nozzle target temperature"
@@ -228,6 +248,15 @@
       },
       "bed_temperature": {
         "name": "Bed temperature"
+      },
+      "chamber_temperature": {
+        "name": "Chamber temperature"
+      },
+      "chamber_fan_1_speed": {
+        "name": "Chamber fan 1 speed"
+      },
+      "chamber_fan_2_speed": {
+        "name": "Chamber fan 2 speed"
       },
       "axis_x": {
         "name": "X position"

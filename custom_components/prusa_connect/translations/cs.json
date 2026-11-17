@@ -174,9 +174,29 @@
         "name": "Kamera {camera}"
       }
     },
+    "fan": {
+      "chamber_fan": {
+        "name": "Ventilátor komory",
+        "state_attributes": {
+          "preset_mode": {
+            "state": {
+              "auto": "Automaticky"
+            }
+          }
+        }
+      }
+    },
+    "light": {
+      "chamber_light": {
+        "name": "Světlo komory"
+      }
+    },
     "number": {
       "bed_target_temperature": {
         "name": "Cílová teplota podložky"
+      },
+      "chamber_target_temperature": {
+        "name": "Cílová teplota komory"
       },
       "nozzle_target_temperature": {
         "name": "Nástroj {tool} cílová teplota trysky"
@@ -228,6 +248,15 @@
       },
       "bed_temperature": {
         "name": "Teplota podložky"
+      },
+      "chamber_temperature": {
+        "name": "Teplota komory"
+      },
+      "chamber_fan_1_speed": {
+        "name": "Otáčky ventilátoru komory 1"
+      },
+      "chamber_fan_2_speed": {
+        "name": "Otáčky ventilátoru komory 2"
       },
       "axis_x": {
         "name": "Pozice X"

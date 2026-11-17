@@ -26,6 +26,11 @@ VERB_RESUME_PRINT = "core.command.resume_print"
 VERB_STOP_PRINT = "core.command.stop_print"
 VERB_SET_NOZZLE_TEMPERATURE = "core.command.set_nozzle_temperature"
 VERB_SET_BED_TEMPERATURE = "core.command.set_bed_temperature"
+VERB_SET_CHAMBER_TEMPERATURE = "core.command.set_chamber_target_temp"
+VERB_SET_CHAMBER_FAN = "core.command.set_chamber_fan_target"
+VERB_SET_CHAMBER_LIGHT = "core.command.set_chamber_led_intensity"
+# The chamber fans' target while they run on their own.
+CHAMBER_FAN_AUTOMATIC = -1
 VERB_SET_SPEED = "core.command.set_speed"
 
 # The argument that names the head a per-tool verb addresses. Its value is the
@@ -479,6 +484,42 @@ class Device:
     @property
     def bed_target_temp(self) -> float | None:
         return _float(self.state.get("/temperature/bed_target"))
+
+    @property
+    def chamber_temp(self) -> float | None:
+        """The air inside an enclosed printer, or ``None`` with no chamber."""
+        return _float(self.state.get("/temperature/chamber"))
+
+    @property
+    def chamber_target_temp(self) -> float | None:
+        """The chamber's target. ``0`` means no target.
+
+        The chamber has fans and no heater, so the target is the temperature
+        the fans hold the air under, and only while they run on their own.
+        """
+        return _float(self.state.get("/temperature/chamber_target"))
+
+    @property
+    def chamber_max_temp(self) -> int:
+        """The highest chamber target the model takes: 60 on a CORE One L, 55 on a CORE One."""
+        folded = "".join(c for c in self.model.lower() if c.isalnum())
+        return 60 if folded.startswith("coreonel") else 55
+
+    @property
+    def chamber_fan_target(self) -> int | None:
+        """The chamber fans' target in percent, ``-1`` while they run on their own."""
+        value = _float(self.state.get("/chamber/fan_pwm_target"))
+        return None if value is None else int(value)
+
+    def chamber_fan_rpm(self, fan: int) -> float | None:
+        """The speed of chamber fan ``1`` or ``2``, in revolutions per minute."""
+        return _float(self.state.get(f"/chamber/fan_{fan}_rpm"))
+
+    @property
+    def chamber_light(self) -> int | None:
+        """The chamber light in percent, or ``None`` where the printer reports none."""
+        value = _float(self.state.get("/chamber/led_intensity"))
+        return None if value is None else int(value)
 
     @property
     def speed(self) -> float | None:

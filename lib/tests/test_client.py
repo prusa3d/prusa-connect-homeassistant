@@ -146,3 +146,25 @@ async def test_setup_status(make_client: Make) -> None:
     status = await make_client(token=None).setup_status()
     assert status.done
     assert status.mode == "required"
+
+
+async def test_chamber(make_client: Make, fake: FakeServer) -> None:
+    core_one = Device.from_dict(load("device_coreone.json"))
+    assert core_one.chamber_temp == 38.4
+    assert core_one.chamber_target_temp == 45
+    client = make_client()
+    await client.set_chamber_temperature(core_one, 49.6)
+    assert fake.commands[-1][1]["args"] == {"chamber.target_temp": "50"}
+    assert core_one.chamber_max_temp == 55
+    assert core_one.chamber_fan_target == -1
+    assert core_one.chamber_light == 100
+    await client.set_chamber_fan(core_one, 140)
+    assert fake.commands[-1][1]["args"] == {"chamber.fan_pwm_target": "100"}
+    await client.set_chamber_fan(core_one, None)
+    assert fake.commands[-1][1]["args"] == {"chamber.fan_pwm_target": "-1"}
+    await client.set_chamber_light(core_one, 50)
+    assert fake.commands[-1][1]["args"] == {"chamber.led_intensity": "50"}
+    klipper = Device.from_dict(load("device_klipper.json"))
+    assert klipper.chamber_temp is None
+    with pytest.raises(UnsupportedError):
+        await client.set_chamber_temperature(klipper, 40)

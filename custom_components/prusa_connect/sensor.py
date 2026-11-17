@@ -54,6 +54,14 @@ def _finish_time(device: Device) -> datetime | None:
     return finish.replace(second=0, microsecond=0)
 
 
+def _chamber_fan_rpm(fan: int) -> Callable[[Device], float | None]:
+    return lambda d: d.chamber_fan_rpm(fan)
+
+
+def _has_chamber_fan(fan: int) -> Callable[[Device], bool]:
+    return lambda d: d.chamber_fan_rpm(fan) is not None
+
+
 @dataclass(frozen=True, kw_only=True)
 class PrinterSensorDescription(SensorEntityDescription):
     value_fn: Callable[[Device], Any]
@@ -114,6 +122,28 @@ PRINTER_SENSORS: tuple[PrinterSensorDescription, ...] = (
         suggested_display_precision=1,
         value_fn=lambda d: d.bed_temp,
         exists_fn=lambda d: d.bed_temp is not None,
+    ),
+    PrinterSensorDescription(
+        key="chamber_temperature",
+        translation_key="chamber_temperature",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=1,
+        value_fn=lambda d: d.chamber_temp,
+        exists_fn=lambda d: d.chamber_temp is not None,
+    ),
+    *(
+        PrinterSensorDescription(
+            key=f"chamber_fan_{fan}_speed",
+            translation_key=f"chamber_fan_{fan}_speed",
+            native_unit_of_measurement=REVOLUTIONS_PER_MINUTE,
+            state_class=SensorStateClass.MEASUREMENT,
+            entity_category=EntityCategory.DIAGNOSTIC,
+            value_fn=_chamber_fan_rpm(fan),
+            exists_fn=_has_chamber_fan(fan),
+        )
+        for fan in (1, 2)
     ),
     *(
         PrinterSensorDescription(

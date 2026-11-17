@@ -59,6 +59,20 @@ async def test_single_head(hass: HomeAssistant, setup_integration: MockConfigEnt
     assert _state(hass, "binary_sensor", CORE_ONE, "connected") == STATE_ON
     assert _state(hass, "number", CORE_ONE, "tool:0:nozzle_target_temperature") == "215.0"
     assert _state(hass, "number", CORE_ONE, "bed_target_temperature") == "60.0"
+    assert _state(hass, "sensor", CORE_ONE, "chamber_temperature") == "38.4"
+    assert _state(hass, "number", CORE_ONE, "chamber_target_temperature") == "45.0"
+    chamber_target = hass.states.get(_entity_id(hass, "number", CORE_ONE, "chamber_target_temperature"))
+    assert chamber_target is not None
+    assert chamber_target.attributes["max"] == 55
+    assert _state(hass, "sensor", CORE_ONE, "chamber_fan_1_speed") == "3000.0"
+    fan = hass.states.get(_entity_id(hass, "fan", CORE_ONE, "chamber_fan"))
+    assert fan is not None
+    assert fan.state == STATE_ON
+    assert fan.attributes["preset_mode"] == "auto"
+    light = hass.states.get(_entity_id(hass, "light", CORE_ONE, "chamber_light"))
+    assert light is not None
+    assert light.state == STATE_ON
+    assert light.attributes["brightness"] == 255
     assert _state(hass, "number", CORE_ONE, "speed") == "100.0"
     assert not _has(hass, "sensor", CORE_ONE, "tool:0:feeder_progress")
     state = hass.states.get(_entity_id(hass, "sensor", CORE_ONE, "state"))
@@ -104,6 +118,12 @@ async def test_xl_multi_head(hass: HomeAssistant, setup_integration: MockConfigE
     assert _state(hass, "binary_sensor", XL, "tool:1:active") == STATE_OFF
     assert _state(hass, "binary_sensor", XL, "tool:1:nozzle_high_flow") == STATE_ON
     assert _state(hass, "sensor", XL, "tool:4:material") == "PVA"
+    # This XL has no enclosure and no chamber verb.
+    assert not _has(hass, "sensor", XL, "chamber_temperature")
+    assert not _has(hass, "number", XL, "chamber_target_temperature")
+    assert not _has(hass, "fan", XL, "chamber_fan")
+    # An XL takes the light and never reports it.
+    assert _state(hass, "light", XL, "chamber_light") == STATE_UNKNOWN
     # Head 1 has not said what its target is.
     assert _state(hass, "number", XL, "tool:1:nozzle_target_temperature") == STATE_UNKNOWN
     second = hass.states.get(_entity_id(hass, "sensor", XL, "tool:1:nozzle_temperature"))

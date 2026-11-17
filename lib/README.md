@@ -25,7 +25,7 @@ What it covers:
 - `devices()` (walks every page), `device(id)`, with the tool tree read from the state tree
   (`Device.tools`, 0-based ids such as `0` and `0.2`)
 - `command()` with an idempotency key, and `pause_print`, `resume_print`, `stop_print`,
-  `set_nozzle_temperature(device, celsius, tool="1")`, `set_bed_temperature`, `set_speed`;
+  `set_nozzle_temperature(device, celsius, tool="1")`, `set_bed_temperature`, `set_chamber_temperature`, `set_chamber_fan` (`None` is automatic), `set_chamber_light`, `set_speed`;
   the value argument is read from the device's capability set
 - `cameras()`, `snapshot()` (honours 204 and `If-Modified-Since`), `camera_stream()`
 - `events()`: reconnects with backoff, resumes with `Last-Event-ID`, yields

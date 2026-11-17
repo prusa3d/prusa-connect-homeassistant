@@ -1,0 +1,93 @@
+"""The chamber fans of an enclosed printer."""
+
+from __future__ import annotations
+
+from collections.abc import Iterator
+from typing import Any
+
+from homeassistant.components.fan import FanEntity, FanEntityFeature
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity import Entity
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+
+from .coordinator import PrusaConnectConfigEntry, PrusaConnectCoordinator
+from .entity import PrusaConnectEntity, async_add_entities_as_found
+from .helpers import command
+from .library import CHAMBER_FAN_AUTOMATIC, VERB_SET_CHAMBER_FAN, Device
+
+PARALLEL_UPDATES = 1
+
+PRESET_AUTO = "auto"
+
+
+def _entities(coordinator: PrusaConnectCoordinator, device: Device) -> Iterator[Entity]:
+    if device.may("operate") and device.supports(VERB_SET_CHAMBER_FAN):
+        yield ChamberFan(coordinator, device)
+
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: PrusaConnectConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
+) -> None:
+    """Set up the chamber fans."""
+    async_add_entities_as_found(entry, async_add_entities, _entities)
+
+
+class ChamberFan(PrusaConnectEntity, FanEntity):
+    """Both chamber fans, which the printer drives together.
+
+    The fans run on their own unless a speed is set. Only then do they hold the
+    chamber under its target, so a speed set by hand leaves the target unused.
+    """
+
+    _attr_translation_key = "chamber_fan"
+    _attr_supported_features = (
+        FanEntityFeature.SET_SPEED
+        | FanEntityFeature.PRESET_MODE
+        | FanEntityFeature.TURN_ON
+        | FanEntityFeature.TURN_OFF
+    )
+
+    def __init__(self, coordinator: PrusaConnectCoordinator, device: Device) -> None:
+        super().__init__(coordinator, device, "chamber_fan")
+        self._attr_preset_modes = [PRESET_AUTO]
+
+    @property
+    def _target(self) -> int | None:
+        device = self.device
+        return device.chamber_fan_target if device else None
+
+    @property
+    def is_on(self) -> bool | None:
+        target = self._target
+        return None if target is None else target != 0
+
+    @property
+    def percentage(self) -> int | None:
+        target = self._target
+        return None if target is None or target == CHAMBER_FAN_AUTOMATIC else target
+
+    @property
+    def preset_mode(self) -> str | None:
+        return PRESET_AUTO if self._target == CHAMBER_FAN_AUTOMATIC else None
+
+    @command
+    async def _set(self, percent: float | None) -> None:
+        device = self.device
+        if device is not None:
+            await self.coordinator.client.set_chamber_fan(device, percent)
+
+    async def async_set_percentage(self, percentage: int) -> None:
+        await self._set(percentage)
+
+    async def async_set_preset_mode(self, preset_mode: str) -> None:
+        await self._set(None)
+
+    async def async_turn_on(
+        self, percentage: int | None = None, preset_mode: str | None = None, **kwargs: Any
+    ) -> None:
+        await self._set(None if percentage is None else percentage)
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        await self._set(0)
