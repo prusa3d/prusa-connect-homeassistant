@@ -1,0 +1,153 @@
+name: Cut a release
+
+# Actions → Cut a release → Run workflow. It does what a maintainer would do by
+# hand: sets the next version in manifest.json, commits it to main, tags it,
+# and pushes both as the release GitHub App. The tag starts release.yml, which
+# builds and publishes the release.
+#
+# Stage and bump mean what they mean to scripts/next_version.py.
+on:
+  workflow_dispatch:
+    inputs:
+      kind:
+        description: The stage of the release
+        required: true
+        default: stable
+        type: choice
+        options: [stable, beta, alpha]
+      bump:
+        description: How far a new cycle moves the version
+        required: true
+        default: patch
+        type: choice
+        options: [patch, minor, major]
+
+permissions:
+  contents: read
+
+# One cut at a time: two would compute the same version.
+concurrency:
+  group: cut-release
+  cancel-in-progress: false
+
+jobs:
+  # Runs the project's own scripts with a read-only token and keeps no
+  # credential in the checkout. It hands the commit and the tag on as a bundle.
+  prepare:
+    name: Commit and tag the release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Main is green
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          sha=$(git rev-parse HEAD)
+          failed=
+          for check in lint integration hassfest hacs; do
+            conclusion=$(gh api "repos/$GITHUB_REPOSITORY/commits/$sha/check-runs?check_name=$check" \
+              --jq '[.check_runs[].conclusion] | first // "missing"')
+            echo "$check: $conclusion"
+            case $conclusion in success | skipped) ;; *) failed=1 ;; esac
+          done
+          test -z "$failed" || { echo "main ($sha) is not green; release it once it is"; exit 1; }
+
+      - name: Bundled library matches lib/
+        run: python3 scripts/vendor_lib.py check
+
+      - name: Work out the version
+        id: version
+        env:
+          KIND: ${{ inputs.kind }}
+          BUMP: ${{ inputs.bump }}
+        run: |
+          set -eu
+          VERSION=$(python3 scripts/next_version.py "$KIND" "$BUMP" --write)
+          if git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
+            echo "v$VERSION exists already"
+            exit 1
+          fi
+          echo "Releasing $VERSION"
+          echo "version=$VERSION" >>"$GITHUB_OUTPUT"
+
+      - name: Commit and tag it
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -eu
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898283+github-actions[bot]@users.noreply.github.com'
+          git commit -qam "Release $VERSION"
+          git tag -a "v$VERSION" -m "v$VERSION"
+          git log --oneline -2
+
+      - name: Bundle the commit and the tag
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -eu
+          mkdir -p bundle
+          git bundle create bundle/release.bundle ^origin/main HEAD "refs/tags/v$VERSION"
+          git bundle list-heads bundle/release.bundle
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-bundle
+          path: bundle/release.bundle
+          retention-days: 3
+
+  # Writes to the repository and runs no project code: it pushes what prepare
+  # made, as a fast-forward of main. It pushes as the release GitHub App
+  # (RELEASE_APP_ID, RELEASE_APP_PRIVATE_KEY, in the release environment),
+  # which may bypass the rules on main and the release tags; the workflow's own
+  # token may not. A tag pushed by the app starts release.yml by itself.
+  push:
+    name: Push the release and start the build
+    needs: prepare
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: read
+    steps:
+      - name: Get the release app's token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ vars.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-bundle
+          path: ./bundle
+
+      - name: Push the commit and the tag
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -eu
+          git bundle verify bundle/release.bundle
+          git fetch -q bundle/release.bundle HEAD "refs/tags/v$VERSION:refs/tags/v$VERSION"
+          # Only a fast-forward: a main that moved since prepare read it is
+          # released again, not overwritten.
+          git merge-base --is-ancestor origin/main FETCH_HEAD || { echo "main moved while the release was prepared; cut it again"; exit 1; }
+          git push --atomic origin FETCH_HEAD:refs/heads/main "refs/tags/v$VERSION"
+          echo "pushed v$VERSION; release.yml builds it"
