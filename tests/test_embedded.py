@@ -370,3 +370,49 @@ async def test_embedded_flow_at_a_picked_host(
     result = await hass.config_entries.flow.async_configure(flow_id)
     assert result["description_placeholders"]["url"] == "http://10.0.0.7:8080/pair?code=BCDF-GHJK"
     hass.config_entries.flow.async_abort(flow_id)
+
+
+async def test_first_run_survives_the_server_restart(
+    hass: HomeAssistant, mock_client: FakeClient, embedded: FakeEmbedded
+) -> None:
+    """A wizard that changes the configuration restarts the server, so a poll finds no port."""
+    mock_client.first_run.clear()
+    mock_client.server_id = "server-1"
+    real = mock_client.setup_status
+    calls = 0
+
+    async def restarting() -> object:
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise CannotConnectError("connection refused")
+        if calls == 3:
+            mock_client.first_run.set()
+        return await real()
+
+    with patch.object(mock_client, "setup_status", side_effect=restarting):
+        flow_id = await _install(hass)
+        await _wait_for(hass, flow_id, "first_run")
+        mock_client.first_run.set()
+        await _wait_for(hass, flow_id, "first_run_done")
+    result = await hass.config_entries.flow.async_configure(flow_id)
+    assert result["step_id"] == "pair"
+    hass.config_entries.flow.async_abort(flow_id)
+
+
+async def test_first_run_of_a_server_already_added(
+    hass: HomeAssistant, mock_client: FakeClient, embedded: FakeEmbedded
+) -> None:
+    """The finished wizard names a server Home Assistant already has: the window says so."""
+    MockConfigEntry(domain=DOMAIN, unique_id="server-1", data={CONF_URL: "http://other:8080"}).add_to_hass(
+        hass
+    )
+    mock_client.first_run.clear()
+    mock_client.server_id = "server-1"
+    flow_id = await _install(hass)
+    await _wait_for(hass, flow_id, "first_run")
+    mock_client.first_run.set()
+    result = await _finish(hass, flow_id)
+    assert result is not None
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "already_configured"

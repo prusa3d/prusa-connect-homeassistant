@@ -83,6 +83,10 @@ TOKEN_SCHEMA = vol.Schema(
 )
 # How often the flow asks whether the first-run wizard has finished.
 FIRST_RUN_POLL = 3
+# How long the server may not answer while the flow waits for the wizard. A
+# wizard that changes the configuration restarts the server, and its port is
+# closed until the new process listens.
+FIRST_RUN_RESTART_GRACE = 120
 
 
 def normalize_url(url: str) -> str:
@@ -335,8 +339,19 @@ class PrusaConnectConfigFlow(ConfigFlow, domain=DOMAIN):
 
     async def _async_wait_first_run(self) -> None:
         client = self._client()
+        loop = asyncio.get_running_loop()
+        answered = loop.time()
         # The server announces nothing when the wizard ends, so it is asked.
-        while not (status := await client.setup_status()).done:  # noqa: ASYNC110
+        while True:
+            try:
+                status = await client.setup_status()
+            except CannotConnectError:
+                if loop.time() - answered > FIRST_RUN_RESTART_GRACE:
+                    raise
+            else:
+                answered = loop.time()
+                if status.done:
+                    break
             await asyncio.sleep(FIRST_RUN_POLL)
         self._open = status.mode == "open"
 
@@ -367,10 +382,13 @@ class PrusaConnectConfigFlow(ConfigFlow, domain=DOMAIN):
         await self._async_probe()
         if self._server_id:
             await self.async_set_unique_id(self._server_id, raise_on_progress=False)
-            self._abort_if_unique_id_configured()
         return self.async_show_progress_done(next_step_id="first_run_done")
 
     async def async_step_first_run_done(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        # A progress step may only end its progress, so a server already added
+        # is turned away here. Aborting in the progress step leaves the window
+        # waiting for good.
+        self._abort_if_unique_id_configured()
         if self._open:
             # A server in open mode serves every request without a credential.
             return self._async_create("")
