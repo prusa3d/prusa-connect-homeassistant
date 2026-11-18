@@ -26,10 +26,14 @@ from .exceptions import (
 )
 from .models import (
     ARG_TOOL,
+    CHAMBER_FAN_AUTOMATIC,
     EVENT_AUTH_EXPIRED,
     VERB_PAUSE_PRINT,
     VERB_RESUME_PRINT,
     VERB_SET_BED_TEMPERATURE,
+    VERB_SET_CHAMBER_FAN,
+    VERB_SET_CHAMBER_LIGHT,
+    VERB_SET_CHAMBER_TEMPERATURE,
     VERB_SET_NOZZLE_TEMPERATURE,
     VERB_SET_SPEED,
     VERB_STOP_PRINT,
@@ -322,6 +326,22 @@ class PrusaConnect:
         """Set the bed target. ``0`` switches the heater off."""
         name = _value_argument(device, VERB_SET_BED_TEMPERATURE)
         return await self.command(device.id, VERB_SET_BED_TEMPERATURE, {name: round(celsius)})
+
+    async def set_chamber_temperature(self, device: Device, celsius: float) -> CommandResult:
+        """Set the chamber target. ``0`` means no target."""
+        name = _value_argument(device, VERB_SET_CHAMBER_TEMPERATURE)
+        return await self.command(device.id, VERB_SET_CHAMBER_TEMPERATURE, {name: round(celsius)})
+
+    async def set_chamber_fan(self, device: Device, percent: float | None) -> CommandResult:
+        """Set the chamber fans. ``None`` hands them back to their own control."""
+        name = _value_argument(device, VERB_SET_CHAMBER_FAN)
+        value = CHAMBER_FAN_AUTOMATIC if percent is None else min(max(round(percent), 0), 100)
+        return await self.command(device.id, VERB_SET_CHAMBER_FAN, {name: value})
+
+    async def set_chamber_light(self, device: Device, percent: float) -> CommandResult:
+        """Set the chamber light, in percent. ``0`` switches it off."""
+        name = _value_argument(device, VERB_SET_CHAMBER_LIGHT)
+        return await self.command(device.id, VERB_SET_CHAMBER_LIGHT, {name: min(max(round(percent), 0), 100)})
 
     async def set_nozzle_temperature(
         self, device: Device, celsius: float, tool: str | None = None

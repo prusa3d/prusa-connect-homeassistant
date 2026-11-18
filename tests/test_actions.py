@@ -89,7 +89,7 @@ async def test_single_head_nozzle_target_sends_no_tool(
 async def test_bed_and_speed(
     hass: HomeAssistant, setup_integration: MockConfigEntry, mock_client: FakeClient
 ) -> None:
-    for key, value in (("bed_target_temperature", 60), ("speed", 150)):
+    for key, value in (("bed_target_temperature", 60), ("chamber_target_temperature", 50), ("speed", 150)):
         await hass.services.async_call(
             NUMBER_DOMAIN,
             SERVICE_SET_VALUE,
@@ -98,6 +98,7 @@ async def test_bed_and_speed(
         )
     assert mock_client.commands == [
         (CORE_ONE, "core.command.set_bed_temperature", {"bed_temperature": 60}),
+        (CORE_ONE, "core.command.set_chamber_target_temp", {"chamber.target_temp": 50}),
         (CORE_ONE, "core.command.set_speed", {"speed": 150}),
     ]
 
@@ -140,3 +141,26 @@ async def test_observe_only_token_gets_no_controls(
     assert hass.states.async_entity_ids("button") == []
     assert hass.states.async_entity_ids("number") == []
     assert hass.states.async_entity_ids("sensor")
+
+
+async def test_chamber_fan_and_light(
+    hass: HomeAssistant, setup_integration: MockConfigEntry, mock_client: FakeClient
+) -> None:
+    fan = _entity_id(hass, "fan", f"{CORE_ONE}:chamber_fan")
+    light = _entity_id(hass, "light", f"{CORE_ONE}:chamber_light")
+    calls = (
+        ("fan", "set_percentage", {ATTR_ENTITY_ID: fan, "percentage": 40}),
+        ("fan", "set_preset_mode", {ATTR_ENTITY_ID: fan, "preset_mode": "auto"}),
+        ("fan", "turn_off", {ATTR_ENTITY_ID: fan}),
+        ("light", "turn_on", {ATTR_ENTITY_ID: light, "brightness": 128}),
+        ("light", "turn_off", {ATTR_ENTITY_ID: light}),
+    )
+    for domain, service, data in calls:
+        await hass.services.async_call(domain, service, data, blocking=True)
+    assert mock_client.commands == [
+        (CORE_ONE, "core.command.set_chamber_fan_target", {"chamber.fan_pwm_target": 40}),
+        (CORE_ONE, "core.command.set_chamber_fan_target", {"chamber.fan_pwm_target": -1}),
+        (CORE_ONE, "core.command.set_chamber_fan_target", {"chamber.fan_pwm_target": 0}),
+        (CORE_ONE, "core.command.set_chamber_led_intensity", {"chamber.led_intensity": 50}),
+        (CORE_ONE, "core.command.set_chamber_led_intensity", {"chamber.led_intensity": 0}),
+    ]
